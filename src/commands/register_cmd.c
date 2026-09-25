@@ -1,4 +1,4 @@
-#include "cli.h"
+#include "register_cmd.h"
 #include "register_io.h"
 
 #include <errno.h>
@@ -18,7 +18,7 @@ static int parse_number(const char *text, uint64_t *result)
 }
 
 /* Project-specific handlers live here; they call the reusable I/O layer. */
-static int read_handler(int argc, char **argv)
+int read_handler(int argc, char **argv)
 {
     uint64_t address;
     uint32_t value;
@@ -28,7 +28,7 @@ static int read_handler(int argc, char **argv)
     return 0;
 }
 
-static int write_handler(int argc, char **argv)
+int write_handler(int argc, char **argv)
 {
     uint64_t address, parsed;
     if (argc != 3 || parse_number(argv[1], &address) ||
@@ -37,11 +37,3 @@ static int write_handler(int argc, char **argv)
     return 0;
 }
 
-int main(void)
-{
-    static const cli_command commands[] = {
-        { "read", read_handler, "read <address>", "Read a 32-bit register" },
-        { "write", write_handler, "write <address> <value>", "Write a 32-bit register" },
-    };
-    return cli_run(commands, sizeof commands / sizeof commands[0]);
-}
