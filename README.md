@@ -57,24 +57,40 @@ EOFでも終了します。ハンドラは順番に同期実行します。
 2. ハンドラを `int handler(int argc, char **argv)` で実装します。
 3. `src/main.c` でヘッダをincludeし、コマンド表に登録します。
 
-登録例：
+コマンド定義は機能側の `.c` に一度だけ記述します。メンバ名を付けることで、
+ハンドラや説明の意味が読み取りやすくなります。
 
 ```c
-{"status", status_handler, "status", "Show status", NULL},
+const cli_command status_command = {
+    .name = "status",
+    .handler = status_handler,
+    .usage = "status",
+    .description = "Show status",
+};
 ```
 
-機能ごとのサブメニューを追加する場合は、`register_cmd.c` と同じように
-`static const cli_command[]` と `const cli_menu` を定義します。
-メインには次のようにメニューを一件登録します。
+対応する `.h` で `extern const cli_command status_command;` を宣言し、
+`src/main.c` のポインタ配列に `&status_command` を追加します。
+同じコマンドを複数のメニューに置く場合も、同じ定義を参照します。
 
 ```c
-{"device", NULL, "device [command ...]", "Device commands", &device_menu},
+static const cli_command *const commands[] = {
+    &register_read_command,
+    &register_write_command,
+    &register_menu_command,
+    &status_command,
+};
 ```
+
+サブメニューも `register_cmd.c` と同じようにポインタ配列と `cli_menu` を定義し、
+`.submenu = &device_menu` を指定したコマンドとして登録します。
+`a b` と複数階層を一行で移動した場合も、`back` で `b` → `a` → ルートと戻れます。
+`a b read ...` や `a b help` の一行実行では、現在のメニューは変わりません。
 
 `handler` と `submenu` はどちらか一方だけ設定します。コマンド名は各メニュー内で
 一意にし、共通コマンドの `help`・`back`・`exit` は使用しません。
 `src/commands/` と `src/core/` 直下の `.c` は自動でビルド対象になります。
-ヘッダの依存関係も自動追跡します。
+ヘッダの依存関係も自動追跡します。ソースの追加・削除も検出して再リンクします。
 
 ハンドラにはその階層のコマンド名が `argv[0]` として渡ります。
 `argv[argc]` はNULLです。引数は実行中だけ有効なので、保持する場合はコピーします。

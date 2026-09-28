@@ -1,7 +1,10 @@
 #ifndef REGISTER_CMD_H
 #define REGISTER_CMD_H
+
 #include "cli.h"
-extern const cli_menu register_menu;
-int read_handler(int argc, char **argv);
-int write_handler(int argc, char **argv);
+
+extern const cli_command register_read_command;
+extern const cli_command register_write_command;
+extern const cli_command register_menu_command;
+
 #endif
