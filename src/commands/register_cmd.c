@@ -1,6 +1,7 @@
 #include "register_cmd.h"
 #include "register_io.h"
 #include "parse.h"
+#include "app_log.h"
 
 #include <inttypes.h>
 #include <stdio.h>
@@ -14,10 +15,10 @@ static int read_handler(int argc, char **argv)
         return CLI_USAGE;
     }
     if (reg_read32(address, &value)) {
-        perror("read");
+        app_log_errno("read");
         return CLI_ERROR;
     }
-    printf("0x%08" PRIx32 "\n", value);
+    app_logf("0x%08" PRIx32, value);
     return CLI_OK;
 }
 
@@ -30,7 +31,7 @@ static int write_handler(int argc, char **argv)
         return CLI_USAGE;
     }
     if (reg_write32(address, value)) {
-        perror("write");
+        app_log_errno("write");
         return CLI_ERROR;
     }
     return CLI_OK;

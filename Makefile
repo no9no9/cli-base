@@ -23,14 +23,15 @@ $(BUILD_DIR)/sources.list: FORCE
 FORCE:
 
 $(TARGET): $(OBJECTS) $(BUILD_DIR)/sources.list
-	$(CC) $(CFLAGS) $(OBJECTS) $(LDFLAGS) $(LDLIBS) -o $@
+	$(CC) -pthread $(CFLAGS) $(OBJECTS) $(LDFLAGS) $(LDLIBS) -o $@
 $(BUILD_DIR)/%.o: src/%.c Makefile
 	@mkdir -p $(@D)
-	$(CC) $(CPPFLAGS) -Iinclude $(MODE_FLAGS) $(CFLAGS) -MMD -MP -c $< -o $@
+	$(CC) -pthread $(CPPFLAGS) -Iinclude $(MODE_FLAGS) $(CFLAGS) -MMD -MP -c $< -o $@
 -include $(OBJECTS:.o=.d)
 test:
 	$(MAKE) MODE=mock all
 	python3 tests/test_cli.py build/mock/debug_cli
 	python3 tests/test_regressions.py
+	python3 tests/test_terminal.py
 clean:
 	rm -rf build

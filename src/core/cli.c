@@ -1,4 +1,6 @@
 #include "cli.h"
+#include "app_log.h"
+#include "terminal_ui.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -14,13 +16,13 @@ typedef struct {
 
 static void print_help(const cli_menu *menu)
 {
-    puts("help                 Show commands\n"
+    app_logf("help                 Show commands\n"
          "back                 Parent menu\n"
          "exit                 Quit application");
 
     for (size_t i = 0; i < menu->count; ++i) {
         const cli_command *command = menu->commands[i];
-        printf("%-28s %s\n", command->usage, command->description);
+        app_logf("%-28s %s", command->usage, command->description);
     }
 }
 
@@ -40,7 +42,7 @@ static int read_line(char *line, size_t capacity)
     }
     while ((ch = getchar()) != '\n' && ch != EOF) {
     }
-    fputs("Input line too long\n", stderr);
+    app_log_errorf("Input line too long");
     return -1;
 }
 
@@ -51,7 +53,7 @@ static int split_arguments(char *line, char **argv)
 
     while (token) {
         if (argc == MAX_ARGS) {
-            fputs("Too many arguments\n", stderr);
+            app_log_errorf("Too many arguments");
             return -1;
         }
         argv[argc++] = token;
@@ -74,15 +76,17 @@ static const cli_command *find_command(const cli_menu *menu, const char *name)
 static void run_handler(const cli_command *command, int argc, char **argv)
 {
     if (!command->handler) {
-        fprintf(stderr, "Missing handler: %s\n", command->name);
+        app_log_errorf( "Missing handler: %s\n", command->name);
         return;
     }
 
+    terminal_set_busy(command->name);
     int result = command->handler(argc, argv);
+    terminal_set_busy(NULL);
     if (result == CLI_USAGE) {
-        fprintf(stderr, "Usage: %s\n", command->usage);
+        app_log_errorf( "Usage: %s\n", command->usage);
     } else if (result != CLI_OK) {
-        fprintf(stderr, "Command failed: %s (%d)\n", command->name, result);
+        app_log_errorf( "Command failed: %s (%d)\n", command->name, result);
     }
 }
 
@@ -101,7 +105,7 @@ static int dispatch(menu_state *state, int argc, char **argv)
 
         if (is_help || is_back || is_exit) {
             if (argc - offset != 1) {
-                fprintf(stderr, "Usage: %s\n", name);
+                app_log_errorf( "Usage: %s\n", name);
                 return 0;
             }
             if (is_exit) {
@@ -120,7 +124,7 @@ static int dispatch(menu_state *state, int argc, char **argv)
 
         const cli_command *command = find_command(menu, name);
         if (!command) {
-            fprintf(stderr, "Unknown command: %s\n", name);
+            app_log_errorf( "Unknown command: %s\n", name);
             return 0;
         }
         if (!command->submenu) {
@@ -128,7 +132,7 @@ static int dispatch(menu_state *state, int argc, char **argv)
             return 0;
         }
         if (next.depth + 1 == MAX_DEPTH) {
-            fputs("Menu nesting limit reached\n", stderr);
+            app_log_errorf("Menu nesting limit reached");
             return 0;
         }
         next.path[++next.depth] = command->submenu;
@@ -138,17 +142,25 @@ static int dispatch(menu_state *state, int argc, char **argv)
     return 0;
 }
 
-int cli_run_menu(const cli_menu *root)
+static int run_loop(const cli_menu *root, int live)
 {
     menu_state state = { .path = {root}, .depth = 0 };
     char line[LINE_SIZE];
     char *argv[MAX_ARGS + 1];
 
     for (;;) {
-        printf("%s> ", state.path[state.depth]->prompt);
-        fflush(stdout);
-
-        int result = read_line(line, sizeof line);
+        if (terminal_interrupted()) {
+            return CLI_OK;
+        }
+        const char *prompt = state.path[state.depth]->prompt;
+        int result;
+        if (live) {
+            result = terminal_read_line(prompt, line, sizeof line);
+        } else {
+            printf("%s> ", prompt);
+            fflush(stdout);
+            result = read_line(line, sizeof line);
+        }
         if (result == 0) {
             return ferror(stdin) ? CLI_ERROR : CLI_OK;
         }
@@ -160,6 +172,18 @@ int cli_run_menu(const cli_menu *root)
             return CLI_OK;
         }
     }
+}
+
+int cli_run_menu(const cli_menu *root)
+{
+    int live = terminal_start();
+    if (live < 0) {
+        app_log_errno("terminal_start");
+        return CLI_ERROR;
+    }
+    int result = run_loop(root, live);
+    terminal_stop();
+    return result;
 }
 
 int cli_run(const cli_command *const *commands, size_t count)

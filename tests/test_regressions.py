@@ -25,7 +25,9 @@ int main(void) { return cli_run(root_commands, 1); }
 ''')
     compiler = shlex.split(os.environ.get('CC', 'cc'))
     subprocess.run(compiler + ['-std=c11', '-I' + str(root / 'include'),
-                   str(source), str(root / 'src/core/cli.c'), '-o', str(work / 'menu')], check=True)
+                   str(source), str(root / 'src/core/cli.c'),
+                   str(root / 'src/core/app_log.c'), str(root / 'src/core/terminal_ui.c'),
+                   '-pthread', '-o', str(work / 'menu')], check=True)
     def menu(commands):
         result = subprocess.run([str(work / 'menu')], input=commands, text=True,
                                 capture_output=True, check=True, timeout=5)
