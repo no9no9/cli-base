@@ -1,62 +1,76 @@
 #include "cli.h"
-
 #include <stdio.h>
 #include <string.h>
+#define LINE_SIZE 1024
+#define MAX_ARGS 32
+#define MAX_DEPTH 16
 
-#define CLI_LINE_SIZE 512
-#define CLI_MAX_ARGS 32
-
-static void discard_line(void)
+static void help(const cli_menu *menu)
 {
-    int ch;
-    while ((ch = getchar()) != '\n' && ch != EOF) {}
+    puts("help                 Show commands\nback                 Parent menu\nexit                 Quit application");
+    for (size_t i = 0; i < menu->count; ++i)
+        printf("%-28s %s\n", menu->commands[i].usage, menu->commands[i].description);
+}
+
+int cli_run_menu(const cli_menu *root)
+{
+    const cli_menu *stack[MAX_DEPTH] = {root};
+    size_t depth = 0;
+    char line[LINE_SIZE];
+    for (;;) {
+        printf("%s> ", stack[depth]->prompt);
+        fflush(stdout);
+        if (!fgets(line, sizeof line, stdin)) return ferror(stdin) ? CLI_ERROR : CLI_OK;
+        if (!strchr(line, '\n') && !feof(stdin)) {
+            int ch = getchar();
+            if (ch != '\n' && ch != EOF) {
+                while ((ch = getchar()) != '\n' && ch != EOF) {}
+                fputs("Input line too long\n", stderr);
+                continue;
+            }
+        }
+        char *argv[MAX_ARGS + 1];
+        int argc = 0;
+        char *token = strtok(line, " \t\r\n");
+        while (token && argc < MAX_ARGS) {
+            argv[argc++] = token;
+            token = strtok(NULL, " \t\r\n");
+        }
+        argv[argc] = NULL;
+        if (token) { fputs("Too many arguments\n", stderr); continue; }
+        if (!argc) continue;
+        const cli_menu *menu = stack[depth];
+        int offset = 0;
+        for (;;) {
+            const char *name = argv[offset];
+            if (!strcmp(name, "exit") || !strcmp(name, "back") || !strcmp(name, "help")) {
+                if (argc - offset != 1) { fprintf(stderr, "Usage: %s\n", name); break; }
+                if (!strcmp(name, "exit")) return CLI_OK;
+                if (!strcmp(name, "help")) help(menu);
+                else if (depth) --depth;
+                break;
+            }
+            const cli_command *cmd = NULL;
+            for (size_t i = 0; i < menu->count; ++i)
+                if (!strcmp(name, menu->commands[i].name)) { cmd = &menu->commands[i]; break; }
+            if (!cmd) { fprintf(stderr, "Unknown command: %s\n", name); break; }
+            if (cmd->submenu) {
+                menu = cmd->submenu;
+                if (++offset < argc) continue;
+                if (depth + 1 == MAX_DEPTH) fputs("Menu nesting limit reached\n", stderr);
+                else stack[++depth] = menu;
+                break;
+            }
+            int rc = cmd->handler(argc - offset, argv + offset);
+            if (rc == CLI_USAGE) fprintf(stderr, "Usage: %s\n", cmd->usage);
+            else if (rc != CLI_OK) fprintf(stderr, "Command failed: %s (%d)\n", cmd->name, rc);
+            break;
+        }
+    }
 }
 
 int cli_run(const cli_command *commands, size_t count)
 {
-    char line[CLI_LINE_SIZE];
-    char *argv[CLI_MAX_ARGS];
-
-    for (;;) {
-        fputs("cli> ", stdout);
-        fflush(stdout);
-        if (!fgets(line, sizeof line, stdin)) {
-            putchar('\n');
-            return ferror(stdin) ? 1 : 0;
-        }
-        if (!strchr(line, '\n') && !feof(stdin)) {
-            discard_line();
-            fputs("Input line too long\n", stderr);
-            continue;
-        }
-
-        int argc = 0;
-        char *token = strtok(line, " \t\r\n");
-        while (token && argc < CLI_MAX_ARGS) {
-            argv[argc++] = token;
-            token = strtok(NULL, " \t\r\n");
-        }
-        if (token) {
-            fputs("Too many arguments\n", stderr);
-            continue;
-        }
-        if (!argc) continue;
-        if (!strcmp(argv[0], "exit")) return 0;
-        if (!strcmp(argv[0], "help")) {
-            puts("help                 Show commands\nexit                 Quit");
-            for (size_t i = 0; i < count; ++i)
-                printf("%-20s %s\n", commands[i].usage, commands[i].description);
-            continue;
-        }
-
-        size_t i;
-        for (i = 0; i < count; ++i) {
-            if (!strcmp(argv[0], commands[i].name)) {
-                if (commands[i].handler(argc, argv) != 0)
-                    fprintf(stderr, "Usage: %s\n", commands[i].usage);
-                break;
-            }
-        }
-        if (i == count) fprintf(stderr, "Unknown command: %s\n", argv[0]);
-    }
+    const cli_menu root = {"cli", commands, count};
+    return cli_run_menu(&root);
 }

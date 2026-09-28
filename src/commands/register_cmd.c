@@ -1,39 +1,41 @@
 #include "register_cmd.h"
 #include "register_io.h"
-
-#include <errno.h>
+#include "parse.h"
 #include <inttypes.h>
 #include <stdio.h>
-#include <stdlib.h>
-
-static int parse_number(const char *text, uint64_t *result)
-{
-    char *end;
-    if (!text || !*text || *text == '-') return -1;
-    errno = 0;
-    unsigned long long parsed = strtoull(text, &end, 0);
-    if (errno || *end) return -1;
-    *result = (uint64_t)parsed;
-    return 0;
-}
-
-/* Project-specific handlers live here; they call the reusable I/O layer. */
 int read_handler(int argc, char **argv)
 {
     uint64_t address;
     uint32_t value;
-    if (argc != 2 || parse_number(argv[1], &address)) return -1;
-    if (reg_read32(address, &value)) { perror("read"); return -1; }
+    if (argc != 2 || parse_u64(argv[1], &address)) return CLI_USAGE;
+    if (reg_read32(address, &value)) { perror("read"); return CLI_ERROR; }
     printf("0x%08" PRIx32 "\n", value);
-    return 0;
+    return CLI_OK;
 }
-
 int write_handler(int argc, char **argv)
 {
-    uint64_t address, parsed;
-    if (argc != 3 || parse_number(argv[1], &address) ||
-        parse_number(argv[2], &parsed) || parsed > UINT32_MAX) return -1;
-    if (reg_write32(address, (uint32_t)parsed)) { perror("write"); return -1; }
-    return 0;
+    uint64_t address;
+    uint32_t value;
+    if (argc != 3 || parse_u64(argv[1], &address) || parse_u32(argv[2], &value)) return CLI_USAGE;
+    if (reg_write32(address, value)) { perror("write"); return CLI_ERROR; }
+    return CLI_OK;
 }
-
+static int field_handler(int argc, char **argv)
+{
+    uint64_t address;
+    uint32_t mask, shift, value;
+    if ((argc != 4 && argc != 5) || parse_u64(argv[1], &address) ||
+        parse_u32(argv[2], &mask) || parse_u32(argv[3], &shift) ||
+        (argc == 5 && parse_u32(argv[4], &value))) return CLI_USAGE;
+    int rc = argc == 5 ? reg_write_field32(address, mask, shift, value)
+                       : reg_read_field32(address, mask, shift, &value);
+    if (rc) { perror("field"); return CLI_ERROR; }
+    if (argc == 4) printf("0x%08" PRIx32 "\n", value);
+    return CLI_OK;
+}
+static const cli_command commands[] = {
+    {"read", read_handler, "read <address>", "Read a 32-bit register", NULL},
+    {"write", write_handler, "write <address> <value>", "Write a 32-bit register", NULL},
+    {"field", field_handler, "field <addr> <mask> <shift> [value]", "Read/write a bit field", NULL},
+};
+const cli_menu register_menu = {"reg", commands, CLI_COUNT(commands)};

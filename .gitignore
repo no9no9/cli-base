@@ -1,3 +1,10 @@
-debug_cli
-debug_cli_real
-mock_phys_mem.bin
+/build/
+/debug_cli
+/debug_cli_real
+/mock_phys_mem.bin
+*.o
+*.d
+*.log
+__pycache__/
+.env
+.env.*
