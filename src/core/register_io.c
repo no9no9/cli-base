@@ -86,27 +86,3 @@ int reg_write32(uint64_t address, uint32_t value)
 {
     return access32(address, &value, 1);
 }
-
-static int check_field(uint32_t mask, unsigned shift)
-{
-    if (shift >= 32 || !mask || (mask & ((UINT32_C(1) << shift) - 1))) {
-        errno = EINVAL; return -1;
-    }
-    return 0;
-}
-int reg_read_field32(uint64_t address, uint32_t mask, unsigned shift, uint32_t *value)
-{
-    uint32_t raw;
-    if (!value) { errno = EINVAL; return -1; }
-    if (check_field(mask, shift) || reg_read32(address, &raw)) return -1;
-    *value = (raw & mask) >> shift;
-    return 0;
-}
-int reg_write_field32(uint64_t address, uint32_t mask, unsigned shift, uint32_t value)
-{
-    uint32_t raw;
-    if (check_field(mask, shift)) return -1;
-    if (value & ~(mask >> shift)) { errno = ERANGE; return -1; }
-    if (reg_read32(address, &raw)) return -1;
-    return reg_write32(address, (raw & ~mask) | (value << shift));
-}

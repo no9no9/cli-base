@@ -26,7 +26,7 @@ make test                 # Python 3。模擬ファイルだけで動作確認
 | `src/main.c` | メインメニューのコマンド登録・起動 |
 | `src/commands/` | 機能ごとのコマンド表、ハンドラ、専用ヘッダ |
 | `src/core/cli.c` | 入力ループ・振り分け・メニュー移動・help |
-| `src/core/register_io.c` | レジスタアクセス・ビットフィールド操作 |
+| `src/core/register_io.c` | レジスタアクセス |
 | `src/core/parse.c` | 数値引数の検証・変換 |
 | `include/` | 共通APIのヘッダ |
 | `include/app_config.h` | プロジェクトごとのアドレス範囲・既定ファイル名 |
@@ -37,14 +37,11 @@ make test                 # Python 3。模擬ファイルだけで動作確認
 
 ```text
 cli> write 0x40000000 0xaabbccdd
-cli> reg field 0x40000000 0x0000ff00 8 0x12
 cli> read 0x40000000
-0xaabb12dd
+0xaabbccdd
 cli> reg
 reg> read 0x40000000
-0xaabb12dd
-reg> field 0x40000000 0x0000ff00 8
-0x00000012
+0xaabbccdd
 reg> back
 cli> exit
 ```
@@ -105,18 +102,13 @@ DEBUG_MEMORY_FILE=/tmp/my_memory.bin ./build/mock/debug_cli
 独自の模擬ファイルの保存先は、リポジトリ外にするか `.gitignore` に追加してください。
 通常のファイル読み書きではCPUのネイティブバイト順を使います。
 
-`field <addr> <mask> <shift> [value]` のmaskはワード中のビット位置を表します。
-読み出しは `(raw & mask) >> shift`、書き込みは該当ビットのみを更新します。
-値がmaskに収まらない場合は拒否します。書き込みは非アトミックなread-modify-writeなので、
-W1C・read-clear・他の処理が同時更新するレジスタには使用しないでください。
-
 実機アクセスには対象ボードの `/dev/mem` 権限・マッピング属性が必要です。
 `volatile` な32ビットアクセスを行います。ボード固有のメモリバリアや
 キャッシュ管理が必要な場合はI/O層で対応してください。実機動作は未検証です。
 
 ## ベース環境への適用方針
 
-既存ツールのコマンド表、サブメニュー、マスク操作、模擬メモリ切り替えを参考に、
+既存ツールのコマンド表、サブメニュー、模擬メモリ切り替えを参考に、
 別プロジェクトでも使える共通処理として整理しています。
 装置固有のレジスタ定義・設定データ・ファームウェア・IPI処理はプロジェクト側で追加します。
 常時監視や非同期UIも、それらが必要になったプロジェクトで拡張する想定です。
