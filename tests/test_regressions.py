@@ -27,6 +27,7 @@ int main(void) { return cli_run(root_commands, 1); }
     subprocess.run(compiler + ['-std=c11', '-I' + str(root / 'include'),
                    str(source), str(root / 'src/core/cli.c'),
                    str(root / 'src/core/app_log.c'), str(root / 'src/core/terminal_ui.c'),
+                   str(root / 'src/core/register_watch.c'), str(root / 'src/core/register_io.c'),
                    '-pthread', '-o', str(work / 'menu')], check=True)
     def menu(commands):
         result = subprocess.run([str(work / 'menu')], input=commands, text=True,

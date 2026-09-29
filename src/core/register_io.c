@@ -5,6 +5,8 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdint.h>
+#include <pthread.h>
+#include <string.h>
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -46,17 +48,37 @@ static int access32(uint64_t address, uint32_t *value, int write_access)
     return rc;
 }
 #else
-#ifndef MOCK_FILE
-#define MOCK_FILE "mock_phys_mem.bin"
-#endif
-static int access32(uint64_t address, uint32_t *value, int write_access)
+/* Serialize file growth and accesses inside this process. */
+static pthread_mutex_t mock_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static int open_mock_file(const char *path, off_t required_size)
+{
+    if (!strcmp(path, MOCK_FILE)) {
+        if (mkdir("./dev", 0700) && errno != EEXIST) {
+            return -1;
+        }
+    }
+    int fd = open(path, O_RDWR | O_CREAT, 0600);
+    if (fd < 0) return -1;
+
+    struct stat status;
+    if (fstat(fd, &status) ||
+        (status.st_size < required_size && ftruncate(fd, required_size))) {
+        int saved = errno;
+        close(fd);
+        errno = saved;
+        return -1;
+    }
+    return fd;
+}
+static int mock_access32(uint64_t address, uint32_t *value, int write_access)
 {
     if (check_address(address)) return -1;
-    if (address - REG_BASE > INT64_MAX - 4) { errno = EOVERFLOW; return -1; }
-    off_t offset = (off_t)(address - REG_BASE);
+    if (address > INT64_MAX - 4) { errno = EOVERFLOW; return -1; }
+    off_t offset = (off_t)address;
     const char *path = getenv("DEBUG_MEMORY_FILE");
     if (!path || !*path) path = MOCK_FILE;
-    int fd = open(path, O_RDWR | O_CREAT, 0600);
+    int fd = open_mock_file(path, offset + 4);
     if (fd < 0) return -1;
     size_t done = 0;
     if (!write_access) *value = 0;
@@ -74,6 +96,16 @@ static int access32(uint64_t address, uint32_t *value, int write_access)
     if (close(fd)) return -1;
     return 0;
 }
+static int access32(uint64_t address, uint32_t *value, int write_access)
+{
+    pthread_mutex_lock(&mock_lock);
+    int result = mock_access32(address, value, write_access);
+    int saved = errno;
+    pthread_mutex_unlock(&mock_lock);
+    errno = saved;
+    return result;
+}
+
 #endif
 
 int reg_read32(uint64_t address, uint32_t *value)

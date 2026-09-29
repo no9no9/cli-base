@@ -2,6 +2,7 @@
 #include "terminal_ui.h"
 #include "app_log.h"
 #include "log_internal.h"
+#include "register_watch.h"
 
 #include <errno.h>
 #include <poll.h>
@@ -21,6 +22,7 @@ static volatile sig_atomic_t interrupted;
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_t renderer;
 static int active, stopping;
+static char watch_text[160];
 static char input_text[1024], prompt_text[128], busy_text[128];
 
 static void on_signal(int signal_number)
@@ -53,7 +55,8 @@ static void draw(void)
     (void)ioctl(STDOUT_FILENO, TIOCGWINSZ, &size);
     unsigned rows = size.ws_row ? size.ws_row : 24;
     unsigned columns = size.ws_col ? size.ws_col - 1 : 79;
-    unsigned visible = rows > 3 ? rows - 3 : 0;
+    unsigned watch_rows = rows > 3 && *watch_text ? 1 : 0;
+    unsigned visible = rows > 3 + watch_rows ? rows - 3 - watch_rows : 0;
     if (visible > LOG_LINES) visible = LOG_LINES;
     size_t first = logs.count > visible ? logs.count - visible : 0;
 
@@ -62,6 +65,10 @@ static void draw(void)
         char title[180];
         snprintf(title, sizeof title, "Logs | %s", *busy ? busy : "IDLE");
         print_text(title, columns);
+        fputs("\r\n", stdout);
+    }
+    if (watch_rows) {
+        print_text(watch_text, columns);
         fputs("\r\n", stdout);
     }
     for (unsigned i = 0; i < visible; ++i) {
@@ -89,6 +96,7 @@ static void *render_loop(void *unused)
         int stop = stopping;
         pthread_mutex_unlock(&lock);
         if (stop) break;
+        register_watch_format(watch_text, sizeof watch_text);
         draw();
         nanosleep(&interval, NULL);
     }

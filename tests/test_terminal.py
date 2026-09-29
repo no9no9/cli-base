@@ -63,15 +63,17 @@ int main(void) {
     subprocess.run(shlex.split(os.environ.get('CC', 'cc')) + [
         '-std=c11', '-pthread', '-I' + str(root / 'include'), str(source),
         str(root / 'src/core/cli.c'), str(root / 'src/core/app_log.c'),
-        str(root / 'src/core/terminal_ui.c'), '-o', str(executable)], check=True)
+        str(root / 'src/core/terminal_ui.c'),
+                   str(root / 'src/core/register_watch.c'), str(root / 'src/core/register_io.c'), '-o', str(executable)], check=True)
 
     def session(ending):
         master, slave = pty.openpty()
         fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
         original = termios.tcgetattr(slave)
         env = dict(os.environ, TERM='xterm', CLI_PLAIN='0')
+        env.pop('DEBUG_MEMORY_FILE', None)
         process = subprocess.Popen([str(executable)], stdin=slave, stdout=slave,
-                                   stderr=slave, env=env)
+                                   stderr=slave, env=env, cwd=work)
         def expect(marker):
             captured = b''
             deadline = time.monotonic() + 5
@@ -82,6 +84,13 @@ int main(void) {
             return captured
         try:
             expect(b'Logs | IDLE')
+            memory = work / 'dev/memory.bin'
+            expect(b'REG [0x40000000]')
+            with memory.open('r+b') as file:
+                file.seek(0x40000000)
+                file.write(struct.pack('=I', 0xabcdef12))
+                file.flush()
+            expect(b'REG [0x40000000] = 0xabcdef12')
             os.write(master, b'slo')
             expect(b'cli> slo')
             expect(b'ASYNC-')
@@ -106,4 +115,4 @@ int main(void) {
             os.close(slave)
     for ending in ['exit', 'signal', 'eof']:
         session(ending)
-print('PASS: async logs, partial input, running command updates, terminal restoration')
+print('PASS: live register refresh, async logs, partial input, running command updates, terminal restoration')
